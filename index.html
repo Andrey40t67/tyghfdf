@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<title>ПРОТОТИП: ОККЛЮЗИЯ</title>
+<style>
+    body, html { margin: 0; padding: 0; overflow: hidden; background: #000; }
+    canvas { width: 100vw; height: 100vh; }
+    #loader {
+        position: fixed; top: 50%; left: 50%;
+        transform: translate(-50%, -50%);
+        color: white; font-size: 2rem; font-family: monospace;
+    }
+    #bg {
+        position: fixed; top: 0; left: 0;
+        width: 100vw; height: 100vh;
+        z-index: -1;
+        background: radial-gradient(circle, #4a0000, #000);
+        animation: pulse 5s infinite alternate;
+    }
+    @keyframes pulse {
+        from { background: radial-gradient(circle, #4a0000, #000); }
+        to { background: radial-gradient(circle, #1a0000, #000); }
+    }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.js" crossorigin="anonymous"></script>
+</head>
+
+<body>
+    <div id="bg"></div>
+    <div id="loader">ЗАГРУЗКА ДВИЖКА СЕГМЕНТАЦИИ...</div>
+    <canvas id="output_canvas"></canvas>
+    
+    <video id="input_video" style="display: none;"></video>
+
+    <script type="module">
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const loader = document.getElementById('loader');
+
+        function onResults(results) {
+            // Устанавливаем размеры холста по размерам видео
+            canvasElement.width = results.image.width;
+            canvasElement.height = results.image.height;
+
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            // Рисуем маску сегментации (где находится человек)
+            canvasCtx.drawImage(results.segmentationMask, 0, 0, canvasElement.width, canvasElement.height);
+
+            // Режим композиции: 'source-in' означает, что следующий рисунок
+            // будет виден только там, где уже что-то нарисовано (т.е. внутри маски).
+            canvasCtx.globalCompositeOperation = 'source-in';
+            
+            // Рисуем оригинальное изображение с камеры, но оно появится только внутри силуэта.
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            
+            canvasCtx.restore();
+        }
+
+        const selfieSegmentation = new SelfieSegmentation({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`;
+        }});
+        
+        selfieSegmentation.setOptions({
+            modelSelection: 1, // 0 для общего, 1 для более детального
+        });
+        
+        selfieSegmentation.onResults(onResults);
+
+        const camera = new Camera(videoElement, {
+            onFrame: async () => {
+                await selfieSegmentation.send({image: videoElement});
+            },
+            width: 1280,
+            height: 720
+        });
+        
+        loader.textContent = 'ЗАПРОС ДОСТУПА К КАМЕРЕ...';
+        camera.start().then(() => {
+            loader.style.display = 'none';
+        }).catch(err => {
+            loader.textContent = 'ОШИБКА: КАМЕРА НЕДОСТУПНА.';
+        });
+    </script>
+</body>
+</html>
